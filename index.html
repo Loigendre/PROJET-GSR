@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Suivi Médical GSR</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, sans-serif;
+      margin: 0;
+      padding: 2rem;
+      background: linear-gradient(to bottom, #eaf6f6, #ffffff);
+      color: #2c3e50;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 2rem;
+      font-size: 2rem;
+      color: #007b83;
+    }
+
+    .metrics {
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .metric-card {
+      background-color: #f0fafa;
+      padding: 1rem 1.5rem;
+      border-radius: 12px;
+      border: 1px solid #d0e2e4;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+      text-align: center;
+    }
+
+    .metric-card .label {
+      font-size: 1rem;
+      color: #555;
+    }
+
+    .metric-card .value {
+      font-size: 1.8rem;
+      font-weight: bold;
+      color: #007b83;
+    }
+
+    .sensitivity-control {
+      text-align: center;
+      margin-top: 1.5rem;
+    }
+
+    .sensitivity-control label {
+      font-size: 1rem;
+      margin-right: 1rem;
+    }
+
+    input[type="range"] {
+      width: 300px;
+      accent-color: #007b83;
+      cursor: pointer;
+    }
+
+    .toggle-wrapper {
+      margin-top: 1rem;
+      text-align: center;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 52px;
+      height: 28px;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      background-color: #ccc;
+      border-radius: 34px;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      transition: .4s;
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 20px;
+      width: 20px;
+      left: 4px;
+      bottom: 4px;
+      background-color: white;
+      border-radius: 50%;
+      transition: .4s;
+    }
+
+    input:checked + .slider {
+      background-color: #007b83;
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(24px);
+    }
+
+    #alertStatusLabel {
+      font-size: 1rem;
+      display: inline-block;
+    }
+
+    .fixed-width-label {
+      min-width: 185px;
+      text-align: left;
+    }
+
+    .chart-container {
+      width: 100%;
+      max-width: 1000px;
+      height: 400px;
+      margin: 2rem auto;
+      background: #fefefe;
+      padding: 1.5rem;
+      border-radius: 12px;
+      border: 1px solid #d0e2e4;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    }
+
+    canvas {
+      width: 100% !important;
+      height: 100% !important;
+    }
+
+    #alertBox {
+      text-align: center;
+      font-size: 1.3rem;
+      background-color: #fff3cd;
+      color: #856404;
+      padding: 1.5rem;
+      border-radius: 12px;
+      border: 2px solid #ffeeba;
+      margin: 1rem auto;
+      max-width: 700px;
+      display: none;
+    }
+
+    #alertBox button {
+      margin-top: 1rem;
+      padding: 0.5rem 1.2rem;
+      font-size: 1rem;
+      background-color: #007b83;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    #alertBox button:hover {
+      background-color: #005f67;
+    }
+
+    #alertHistoryContainer {
+      max-width: 1000px;
+      margin: 3rem auto 0;
+      background: #ffffff;
+      padding: 1.5rem;
+      border-radius: 12px;
+      border: 1px solid #d0e2e4;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    }
+
+    #alertHistoryContainer h2 {
+      text-align: center;
+      margin-bottom: 1rem;
+      color: #007b83;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      padding: 0.75rem;
+      text-align: center;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    th {
+      background-color: #f0fafa;
+      color: #2c3e50;
+    }
+  </style>
+</head>
+<body>
+  <h1>🩺 Suivi GSR Patient en Temps Réel</h1>
+
+  <div class="metrics">
+    <div class="metric-card">
+      <div class="label">Dernière valeur</div>
+      <div class="value" id="gsrValue">--</div>
+      <div class="label">µS</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">Moyenne glissante (10s)</div>
+      <div class="value" id="gsrAverage">moyenne en attente...</div>
+    </div>
+  </div>
+
+  <div class="sensitivity-control">
+    <label for="sensitivitySlider">Sensibilité :</label>
+    <input type="range" id="sensitivitySlider" min="10" max="50" step="1" value="30" />
+    <span id="sensitivityDisplay">30%</span>
+  </div>
+
+  <div class="toggle-wrapper">
+    <label class="switch">
+      <input type="checkbox" id="alertToggle" checked>
+      <span class="slider"></span>
+    </label>
+    <div id="alertStatusLabel" class="fixed-width-label">Système d'alerte activé</div>
+  </div>
+
+  <div id="alertBox">
+    ⚠️ <strong><span id="alertMessage">Alerte GSR</span></strong><br>
+    <button onclick="clearAlert()">Je suis en sécurité</button>
+  </div>
+
+  <div class="chart-container">
+    <canvas id="gsrRealtimeChart"></canvas>
+  </div>
+  <div class="chart-container">
+    <canvas id="gsrHistoryChart"></canvas>
+  </div>
+
+  <!-- 📝 Historique des alertes -->
+  <div id="alertHistoryContainer">
+    <h2>📝 Historique des alertes</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Horodatage</th>
+          <th>Type</th>
+          <th>Moyenne (µS)</th>
+          <th>Valeur GSR (µS)</th>
+        </tr>
+      </thead>
+      <tbody id="alertHistoryBody">
+        <!-- alertes injectées ici -->
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    const baseURL = "http://138.195.182.6:5000";
+    const realtimeCtx = document.getElementById("gsrRealtimeChart").getContext("2d");
+    const historyCtx = document.getElementById("gsrHistoryChart").getContext("2d");
+    const gsrValueDisplay = document.getElementById("gsrValue");
+    const gsrAverageDisplay = document.getElementById("gsrAverage");
+    const alertBox = document.getElementById("alertBox");
+    const alertMessage = document.getElementById("alertMessage");
+    const sensitivitySlider = document.getElementById("sensitivitySlider");
+    const sensitivityDisplay = document.getElementById("sensitivityDisplay");
+    const alertToggle = document.getElementById("alertToggle");
+    const alertStatusLabel = document.getElementById("alertStatusLabel");
+    const alertHistoryBody = document.getElementById("alertHistoryBody");
+
+    let sensitivityThreshold = 0.30;
+    let alertHistory = [];
+
+    sensitivitySlider.addEventListener("input", () => {
+      sensitivityThreshold = parseInt(sensitivitySlider.value) / 100;
+      sensitivityDisplay.textContent = `${sensitivitySlider.value}%`;
+    });
+
+    alertToggle.addEventListener("change", () => {
+      alertStatusLabel.textContent = alertToggle.checked
+        ? "Système d'alerte activé"
+        : "Système d'alerte désactivé";
+    });
+
+    let realtimeData = [];
+    let realtimeLabels = [];
+    let historyData = [];
+    let historyLabels = [];
+    let alertActive = false;
+
+    const maxRealtimePoints = 100;
+    const maxHistoryPoints = 1000;
+    const windowSize = 100;
+
+    const createChart = (ctx, label, color) => new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [{
+          label: label,
+          data: [],
+          borderColor: color,
+          backgroundColor: color.replace('1)', '0.08)'),
+          borderWidth: 2,
+          fill: true,
+          pointRadius: 0,
+          tension: 0.25
+        }]
+      },
+      options: {
+        animation: false,
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            display: true,
+            title: { display: true, text: 'Heure', color: '#555' },
+            ticks: {
+              autoSkip: true,
+              maxTicksLimit: 10,
+              color: '#555',
+              callback: function(value) {
+                return this.getLabelForValue(value).slice(0, 8);
+              }
+            },
+            grid: { color: '#e0f0f0' }
+          },
+          y: {
+            beginAtZero: false,
+            title: { display: true, text: 'GSR (µS)', color: '#555' },
+            ticks: { color: '#555' },
+            grid: { color: '#e0f0f0' }
+          }
+        },
+        plugins: {
+          legend: { display: true, labels: { color: '#007b83' } },
+          tooltip: { mode: 'index', intersect: false }
+        },
+        interaction: { mode: 'index', intersect: false }
+      }
+    });
+
+    const realtimeChart = createChart(realtimeCtx, 'GSR (10s)', 'rgba(255, 99, 132, 1)');
+    const historyChart = createChart(historyCtx, 'GSR (Historique)', 'rgba(255, 99, 132, 1)');
+
+    function clearAlert() {
+      alertActive = false;
+      alertBox.style.display = "none";
+      realtimeData = [];
+      realtimeLabels = [];
+      gsrAverageDisplay.textContent = "moyenne en attente...";
+      realtimeChart.data.labels = [];
+      realtimeChart.data.datasets[0].data = [];
+      realtimeChart.update();
+    }
+
+    function addAlertToHistory(timestamp, type, avg, value) {
+      alertHistory.push({ timestamp, type, avg, value });
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${timestamp}</td>
+        <td>${type}</td>
+        <td>${avg.toFixed(2)}</td>
+        <td>${value.toFixed(2)}</td>`;
+      alertHistoryBody.appendChild(row);
+    }
+
+    async function fetchGSR() {
+      try {
+        const res = await fetch(`${baseURL}/latest`);
+        const data = await res.json();
+        if (!data || typeof data.gsr === 'undefined') return;
+
+        const value = parseFloat(data.gsr);
+        const time = data.timestamp.split(" ")[1];
+
+        gsrValueDisplay.textContent = value.toFixed(2);
+        realtimeData.push(value);
+        realtimeLabels.push(time);
+        if (realtimeData.length > maxRealtimePoints) {
+          realtimeData.shift();
+          realtimeLabels.shift();
+        }
+
+        realtimeChart.data.labels = [...realtimeLabels];
+        realtimeChart.data.datasets[0].data = [...realtimeData];
+        realtimeChart.update();
+
+        historyData.push(value);
+        historyLabels.push(time);
+        if (historyData.length > maxHistoryPoints) {
+          historyData.shift();
+          historyLabels.shift();
+        }
+        historyChart.data.labels = [...historyLabels];
+        historyChart.data.datasets[0].data = [...historyData];
+        historyChart.update();
+
+        if (realtimeData.length >= windowSize) {
+          const window = realtimeData.slice(-windowSize);
+          const avg = window.reduce((a, b) => a + b, 0) / window.length;
+          gsrAverageDisplay.textContent = avg.toFixed(2);
+
+          const variation = Math.abs(value - avg) / avg;
+          const direction = value > avg ? "augmentation" : "diminution";
+
+          if (alertToggle.checked && variation > sensitivityThreshold && !alertActive) {
+            alertActive = true;
+            const timestamp = new Date().toLocaleString();
+            alertMessage.textContent = `Variation détectée : ${direction} de plus de ${Math.round(sensitivityThreshold * 100)}% par rapport à la moyenne (${avg.toFixed(2)} µS).`;
+            alertBox.style.display = "block";
+            addAlertToHistory(timestamp, direction, avg, value);
+          }
+        } else {
+          gsrAverageDisplay.textContent = "moyenne en attente...";
+        }
+
+      } catch (e) {
+        console.error("Erreur lors de la récupération des données :", e);
+      }
+    }
+
+    fetchGSR();
+    setInterval(fetchGSR, 100);
+  </script>
+</body>
+</html>
